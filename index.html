@@ -419,11 +419,15 @@ tr:hover td{background:#f8fdf4;}
       <div class="charts-row">
         <div class="chart-card">
           <div class="chart-title">📦 Order Type Breakdown</div>
-          <canvas id="chart-type" height="180"></canvas>
+          <div style="position:relative;height:200px;width:100%;">
+            <canvas id="chart-type"></canvas>
+          </div>
         </div>
         <div class="chart-card">
           <div class="chart-title">🥗 Bowl Popularity</div>
-          <canvas id="chart-bowl" height="180"></canvas>
+          <div style="position:relative;height:200px;width:100%;">
+            <canvas id="chart-bowl"></canvas>
+          </div>
         </div>
       </div>
 
@@ -898,34 +902,57 @@ function parsePlanPrice(plan) {
 
 /* ─── CHARTS ─── */
 function renderCharts() {
+  // Only render if the overview page is currently visible
+  const overviewPage = document.getElementById('page-overview');
+  if (!overviewPage || !overviewPage.classList.contains('active')) return;
+
   const daily   = allOrders.filter(o=>o.packType==='daily').length;
   const monthly = allOrders.filter(o=>o.packType==='monthly').length;
   const fruit   = allOrders.filter(o=>o.bowl&&o.bowl.includes('Fruit')).length;
   const veg     = allOrders.filter(o=>o.bowl&&o.bowl.includes('Veg')).length;
   const combo   = allOrders.filter(o=>o.bowl&&o.bowl.includes('Combo')).length;
 
-  if (chartType) chartType.destroy();
+  // Destroy old instances cleanly before recreating
+  if (chartType)  { chartType.destroy();  chartType  = null; }
+  if (chartBowl)  { chartBowl.destroy();  chartBowl  = null; }
+
   const ctx1 = document.getElementById('chart-type').getContext('2d');
   chartType = new Chart(ctx1, {
-    type:'doughnut',
-    data:{ labels:['Daily','Monthly'], datasets:[{ data:[daily,monthly],
-      backgroundColor:['#a8d96c','#2d6a4f'], borderWidth:0 }]},
-    options:{ plugins:{ legend:{ position:'bottom',labels:{font:{family:'Plus Jakarta Sans',size:11}} }},
-      responsive:true, maintainAspectRatio:false }
+    type: 'doughnut',
+    data: {
+      labels: ['Daily','Monthly'],
+      datasets: [{ data:[daily,monthly], backgroundColor:['#a8d96c','#2d6a4f'], borderWidth:0 }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 400 },
+      plugins: { legend: { position:'bottom', labels:{ font:{ family:'Plus Jakarta Sans', size:11 } } } }
+    }
   });
 
-  if (chartBowl) chartBowl.destroy();
   const ctx2 = document.getElementById('chart-bowl').getContext('2d');
   chartBowl = new Chart(ctx2, {
-    type:'bar',
-    data:{ labels:['🍓 Fruit','🥗 Veg','💪 Combo'], datasets:[{
-      data:[fruit,veg,combo], backgroundColor:['#f9c74f','#a8d96c','#f4845f'],
-      borderRadius:8, borderWidth:0 }]},
-    options:{ plugins:{legend:{display:false}},
-      scales:{ y:{ beginAtZero:true, grid:{ color:'rgba(0,0,0,0.05)' },
-                   ticks:{font:{family:'Plus Jakarta Sans',size:10}} },
-               x:{ grid:{display:false}, ticks:{font:{family:'Plus Jakarta Sans',size:11}} }},
-      responsive:true, maintainAspectRatio:false }
+    type: 'bar',
+    data: {
+      labels: ['🍓 Fruit','🥗 Veg','💪 Combo'],
+      datasets: [{
+        data: [fruit,veg,combo],
+        backgroundColor: ['#f9c74f','#a8d96c','#f4845f'],
+        borderRadius: 8,
+        borderWidth: 0
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 400 },
+      plugins: { legend: { display:false } },
+      scales: {
+        y: { beginAtZero:true, grid:{ color:'rgba(0,0,0,0.05)' }, ticks:{ font:{ family:'Plus Jakarta Sans', size:10 }, stepSize:1 } },
+        x: { grid:{ display:false }, ticks:{ font:{ family:'Plus Jakarta Sans', size:11 } } }
+      }
+    }
   });
 }
 
@@ -1213,6 +1240,10 @@ function showPage(name) {
   const nav = document.getElementById('nav-'+name);
   if (nav) nav.classList.add('active');
   window.scrollTo(0,0);
+  // Re-render charts after the overview page becomes visible in the DOM
+  if (name === 'overview') {
+    requestAnimationFrame(()=> requestAnimationFrame(renderCharts));
+  }
 }
 
 /* ═══════════════════════════════════════════════════
