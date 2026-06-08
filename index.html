@@ -6,30 +6,40 @@
 <title>Fresh Bowl Theory — Admin Dashboard</title>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
 
-<!-- Firebase SDKs -->
+<!-- Firebase SDKs via CDN (ESM) -->
 <script type="module">
-  // Import the functions you need from the SDKs you need
-import { initializeApp } from "firebase/app";
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
+  import { initializeApp }
+    from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged }
+    from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  import { getFirestore, collection, addDoc, getDocs,
+           doc, updateDoc, deleteDoc, query, orderBy,
+           where, serverTimestamp, onSnapshot }
+    from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-// Your web app's Firebase configuration
-const firebaseConfig = {
-  apiKey: "AIzaSyC2Hl66N2jLi7FTuuHibLqycntEPNLrc14",
-  authDomain: "freshbowl-admin.firebaseapp.com",
-  projectId: "freshbowl-admin",
-  storageBucket: "freshbowl-admin.firebasestorage.app",
-  messagingSenderId: "1006682194050",
-  appId: "1:1006682194050:web:4e3ad76d6858d2a72bf49b"
-};
+  const firebaseConfig = {
+    apiKey:            "AIzaSyC2Hl66N2jLi7FTuuHibLqycntEPNLrc14",
+    authDomain:        "freshbowl-admin.firebaseapp.com",
+    projectId:         "freshbowl-admin",
+    storageBucket:     "freshbowl-admin.firebasestorage.app",
+    messagingSenderId: "1006682194050",
+    appId:             "1:1006682194050:web:4e3ad76d6858d2a72bf49b"
+  };
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
+  const app  = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db   = getFirestore(app);
 
-  window._fb = { auth, db, signInWithEmailAndPassword, signOut,
-                 onAuthStateChanged, collection, addDoc, getDocs,
-                 doc, updateDoc, deleteDoc, query, orderBy,
-                 where, serverTimestamp, onSnapshot };
+  // Expose everything to the global non-module scripts
+  window._fb = {
+    auth, db,
+    signInWithEmailAndPassword, signOut, onAuthStateChanged,
+    collection, addDoc, getDocs, doc, updateDoc, deleteDoc,
+    query, orderBy, where, serverTimestamp, onSnapshot
+  };
+
+  // Fire a custom event so the main script knows Firebase is ready
+  window.dispatchEvent(new Event('fb-ready'));
 </script>
 
 <style>
@@ -751,11 +761,30 @@ let currentUser = null;
 let calYear, calMonth;
 let chartType, chartBowl;
 
-/* Wait for Firebase module to load */
-function waitForFB(cb, n=0) {
-  if (window._fb) { _auth=window._fb.auth; _db=window._fb.db; _fns=window._fb; cb(); }
-  else if (n<40) setTimeout(()=>waitForFB(cb,n+1), 150);
-  else console.error('Firebase not loaded');
+/* ── Bootstrap: wait for the ES-module to fire 'fb-ready' ── */
+function initFB() {
+  _auth = window._fb.auth;
+  _db   = window._fb.db;
+  _fns  = window._fb;
+  // Start auth state watcher immediately
+  _fns.onAuthStateChanged(_auth, user => {
+    if (user) {
+      currentUser = user;
+      document.getElementById('login-screen').style.display = 'none';
+      document.getElementById('app-shell').style.display    = 'block';
+      document.getElementById('sb-user-email').textContent  = user.email;
+      initApp();
+    } else {
+      document.getElementById('login-screen').style.display = 'flex';
+      document.getElementById('app-shell').style.display    = 'none';
+    }
+  });
+}
+
+if (window._fb) {
+  initFB(); // already ready (rare, but safe)
+} else {
+  window.addEventListener('fb-ready', initFB, { once: true });
 }
 
 /* ═══════════════════════════════════════════════════
@@ -765,37 +794,30 @@ function doLogin() {
   const email = document.getElementById('l-email').value.trim();
   const pass  = document.getElementById('l-pass').value;
   if (!email || !pass) { showErr('Please enter email and password.'); return; }
-  waitForFB(()=>{
-    _fns.signInWithEmailAndPassword(_auth, email, pass)
-      .then(()=>{ document.getElementById('login-err').style.display='none'; })
-      .catch(()=>{ showErr('Invalid credentials. Please try again.'); });
-  });
+  if (!_fns) { showErr('Firebase not ready yet. Please wait a moment and try again.'); return; }
+  _fns.signInWithEmailAndPassword(_auth, email, pass)
+    .then(()=>{ document.getElementById('login-err').style.display='none'; })
+    .catch(err=>{
+      console.error('Login error:', err.code, err.message);
+      const msg = err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password'
+        ? 'Wrong email or password.'
+        : err.code === 'auth/user-not-found'
+        ? 'No admin account found with this email.'
+        : err.code === 'auth/too-many-requests'
+        ? 'Too many attempts. Please wait and try again.'
+        : 'Login failed: ' + err.message;
+      showErr(msg);
+    });
 }
 
 function doLogout() {
-  waitForFB(()=>{ _fns.signOut(_auth); });
+  if (_fns) _fns.signOut(_auth);
 }
 
 function showErr(msg) {
   const el = document.getElementById('login-err');
   el.textContent = msg; el.style.display='block';
 }
-
-/* Auth state listener */
-waitForFB(()=>{
-  _fns.onAuthStateChanged(_auth, user => {
-    if (user) {
-      currentUser = user;
-      document.getElementById('login-screen').style.display = 'none';
-      document.getElementById('app-shell').style.display = 'block';
-      document.getElementById('sb-user-email').textContent = user.email;
-      initApp();
-    } else {
-      document.getElementById('login-screen').style.display = 'flex';
-      document.getElementById('app-shell').style.display = 'none';
-    }
-  });
-});
 
 /* ═══════════════════════════════════════════════════
    INIT
